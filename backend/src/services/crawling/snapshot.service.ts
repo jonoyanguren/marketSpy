@@ -15,6 +15,19 @@ export type SavedCrawlSnapshot = {
   visibleTextHash: string;
 };
 
+export type CrawlSnapshotHistoryItem = {
+  id: string;
+  requestedUrl: string;
+  finalUrl: string;
+  title: string;
+  h1: string | null;
+  htmlLength: number;
+  visibleTextLength: number;
+  htmlHash: string;
+  visibleTextHash: string;
+  crawledAt: string;
+};
+
 export async function saveCrawlSnapshot(
   result: CrawlPreviewResult,
 ): Promise<SavedCrawlSnapshot> {
@@ -43,4 +56,26 @@ export async function saveCrawlSnapshot(
     htmlHash,
     visibleTextHash,
   };
+}
+
+export async function listCrawlSnapshots(): Promise<CrawlSnapshotHistoryItem[]> {
+  await connectToDatabase();
+
+  const snapshots = await CrawlSnapshotModel.find()
+    .sort({ crawledAt: -1 })
+    .limit(50)
+    .lean();
+
+  return snapshots.map((snapshot) => ({
+    id: String(snapshot._id),
+    requestedUrl: snapshot.requestedUrl,
+    finalUrl: snapshot.finalUrl,
+    title: snapshot.title,
+    h1: snapshot.h1 ?? null,
+    htmlLength: snapshot.htmlLength,
+    visibleTextLength: snapshot.visibleTextLength,
+    htmlHash: snapshot.htmlHash,
+    visibleTextHash: snapshot.visibleTextHash,
+    crawledAt: snapshot.crawledAt.toISOString(),
+  }));
 }

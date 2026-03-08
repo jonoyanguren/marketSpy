@@ -4,7 +4,10 @@ import {
   loadPagePreview,
   type CrawlPreviewResult,
 } from "../services/crawling/page-loader.service.js";
-import { saveCrawlSnapshot } from "../services/crawling/snapshot.service.js";
+import {
+  listCrawlSnapshots,
+  saveCrawlSnapshot,
+} from "../services/crawling/snapshot.service.js";
 
 type CrawlPreviewRequestBody = {
   url?: string;
@@ -62,6 +65,26 @@ export const previewCrawl = async (
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Failed to crawl the URL.";
+
+    response.status(500).json({
+      message,
+    });
+  }
+};
+
+export const getCrawlingHistory = async (
+  _request: Request,
+  response: Response,
+): Promise<void> => {
+  try {
+    const items = await listCrawlSnapshots();
+
+    response.json({
+      data: items,
+    });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Failed to load crawl history.";
 
     response.status(500).json({
       message,
