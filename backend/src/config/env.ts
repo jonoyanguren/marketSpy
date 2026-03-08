@@ -11,4 +11,5 @@ export const env = {
   nodeEnv: process.env.NODE_ENV ?? "development",
   port: toNumber(process.env.PORT, 4000),
   corsOrigin: process.env.CORS_ORIGIN ?? "http://localhost:5173",
+  mongodbUri: process.env.MONGODB_URI ?? "mongodb://127.0.0.1:27017/marketspy",
 };

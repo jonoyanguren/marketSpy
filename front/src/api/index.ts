@@ -1,4 +1,4 @@
-type CallApiOptions = Omit<RequestInit, "body"> & {
+export type CallApiOptions = Omit<RequestInit, "body"> & {
   baseUrl?: string;
   body?: BodyInit | Record<string, unknown> | null;
 };
@@ -82,17 +82,4 @@ export async function callApi<T>(
   }
 
   return data as T;
-}
-
-export type HealthResponse = {
-  status: string;
-  service: string;
-  timestamp: string;
-};
-
-export function getHealth(baseUrl?: string): Promise<HealthResponse> {
-  return callApi<HealthResponse>("/api/health", {
-    method: "GET",
-    baseUrl,
-  });
 }
