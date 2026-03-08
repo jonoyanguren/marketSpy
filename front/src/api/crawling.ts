@@ -1,6 +1,12 @@
 import { callApi } from "./index";
 
 export type CrawlPreviewData = {
+  competitor: {
+    id: string;
+    name: string;
+    domain: string;
+  };
+  competitorId: string;
   requestedUrl: string;
   finalUrl: string;
   title: string;
@@ -17,6 +23,11 @@ export type CrawlPreviewData = {
 
 export type CrawlHistoryItem = {
   id: string;
+  competitor: {
+    id: string;
+    name: string;
+    domain: string;
+  } | null;
   requestedUrl: string;
   finalUrl: string;
   title: string;
@@ -36,10 +47,13 @@ type CrawlHistoryResponse = {
   data: CrawlHistoryItem[];
 };
 
-export async function previewCrawl(url: string): Promise<CrawlPreviewData> {
+export async function previewCrawl(input: {
+  url: string;
+  competitorId: string;
+}): Promise<CrawlPreviewData> {
   const response = await callApi<CrawlPreviewResponse>("/api/crawling/preview", {
     method: "POST",
-    body: { url },
+    body: input,
   });
 
   return response.data;

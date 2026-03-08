@@ -10,6 +10,7 @@ const sha256 = (value: string): string => {
 
 export type SavedCrawlSnapshot = {
   id: string;
+  competitorId: string;
   crawledAt: string;
   htmlHash: string;
   visibleTextHash: string;
@@ -17,6 +18,11 @@ export type SavedCrawlSnapshot = {
 
 export type CrawlSnapshotHistoryItem = {
   id: string;
+  competitor: {
+    id: string;
+    name: string;
+    domain: string;
+  } | null;
   requestedUrl: string;
   finalUrl: string;
   title: string;
@@ -30,6 +36,7 @@ export type CrawlSnapshotHistoryItem = {
 
 export async function saveCrawlSnapshot(
   result: CrawlPreviewResult,
+  competitorId: string,
 ): Promise<SavedCrawlSnapshot> {
   await connectToDatabase();
 
@@ -37,6 +44,7 @@ export async function saveCrawlSnapshot(
   const visibleTextHash = sha256(result.visibleText);
 
   const snapshot = await CrawlSnapshotModel.create({
+    competitorId,
     requestedUrl: result.requestedUrl,
     finalUrl: result.finalUrl,
     title: result.title,
@@ -52,6 +60,7 @@ export async function saveCrawlSnapshot(
 
   return {
     id: snapshot.id,
+    competitorId,
     crawledAt: snapshot.crawledAt.toISOString(),
     htmlHash,
     visibleTextHash,
@@ -64,10 +73,22 @@ export async function listCrawlSnapshots(): Promise<CrawlSnapshotHistoryItem[]> 
   const snapshots = await CrawlSnapshotModel.find()
     .sort({ crawledAt: -1 })
     .limit(50)
+    .populate("competitorId", "name domain")
     .lean();
 
   return snapshots.map((snapshot) => ({
     id: String(snapshot._id),
+    competitor:
+      snapshot.competitorId &&
+      typeof snapshot.competitorId === "object" &&
+      "name" in snapshot.competitorId &&
+      "domain" in snapshot.competitorId
+        ? {
+            id: String(snapshot.competitorId._id),
+            name: String(snapshot.competitorId.name),
+            domain: String(snapshot.competitorId.domain),
+          }
+        : null,
     requestedUrl: snapshot.requestedUrl,
     finalUrl: snapshot.finalUrl,
     title: snapshot.title,

@@ -1,9 +1,12 @@
 import type { Request, Response } from "express";
+import { isValidObjectId } from "mongoose";
 
+import { connectToDatabase } from "../config/database.js";
 import {
   loadPagePreview,
   type CrawlPreviewResult,
 } from "../services/crawling/page-loader.service.js";
+import { CompetitorModel } from "../models/competitor.model.js";
 import {
   listCrawlSnapshots,
   saveCrawlSnapshot,
@@ -11,6 +14,7 @@ import {
 
 type CrawlPreviewRequestBody = {
   url?: string;
+  competitorId?: string;
 };
 
 const isValidHttpUrl = (value: string): boolean => {
@@ -27,10 +31,25 @@ export const previewCrawl = async (
   response: Response,
 ): Promise<void> => {
   const url = request.body?.url?.trim();
+  const competitorId = request.body?.competitorId?.trim();
 
   if (!url) {
     response.status(400).json({
       message: "The `url` field is required.",
+    });
+    return;
+  }
+
+  if (!competitorId) {
+    response.status(400).json({
+      message: "The `competitorId` field is required.",
+    });
+    return;
+  }
+
+  if (!isValidObjectId(competitorId)) {
+    response.status(400).json({
+      message: "The `competitorId` field must be a valid id.",
     });
     return;
   }
@@ -43,11 +62,27 @@ export const previewCrawl = async (
   }
 
   try {
+    await connectToDatabase();
+
+    const competitor = await CompetitorModel.findById(competitorId).lean();
+
+    if (!competitor) {
+      response.status(404).json({
+        message: "Competitor not found.",
+      });
+      return;
+    }
+
     const result: CrawlPreviewResult = await loadPagePreview(url);
-    const savedSnapshot = await saveCrawlSnapshot(result);
+    const savedSnapshot = await saveCrawlSnapshot(result, competitorId);
 
     response.json({
       data: {
+        competitor: {
+          id: competitorId,
+          name: competitor.name,
+          domain: competitor.domain,
+        },
         requestedUrl: result.requestedUrl,
         finalUrl: result.finalUrl,
         title: result.title,
@@ -57,6 +92,7 @@ export const previewCrawl = async (
         visibleTextPreview: result.visibleText.slice(0, 2_000),
         visibleTextLength: result.visibleText.length,
         snapshotId: savedSnapshot.id,
+        competitorId: savedSnapshot.competitorId,
         crawledAt: savedSnapshot.crawledAt,
         htmlHash: savedSnapshot.htmlHash,
         visibleTextHash: savedSnapshot.visibleTextHash,

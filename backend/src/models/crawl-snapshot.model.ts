@@ -2,6 +2,12 @@ import { Schema, model } from "mongoose";
 
 const crawlSnapshotSchema = new Schema(
   {
+    competitorId: {
+      type: Schema.Types.ObjectId,
+      ref: "Competitor",
+      required: true,
+      index: true,
+    },
     requestedUrl: {
       type: String,
       required: true,

@@ -67,6 +67,12 @@ export function HistoryPage() {
               <p className="font-semibold text-white">
                 {item.title || "Sin titulo"}
               </p>
+              <p className="mt-1 text-slate-300">
+                <strong>Competitor:</strong>{" "}
+                {item.competitor
+                  ? `${item.competitor.name} (${item.competitor.domain})`
+                  : "Sin competitor"}
+              </p>
               <p className="mt-1 break-all text-slate-400">{item.finalUrl}</p>
               <div className="mt-4 space-y-1">
                 <p>
