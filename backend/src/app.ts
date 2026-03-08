@@ -2,6 +2,7 @@ import cors from "cors";
 import express from "express";
 
 import { env } from "./config/env.js";
+import { errorHandler } from "./utils/error-handler.js";
 import { requestLogger } from "./middlewares/request-logger.middleware.js";
 import { apiRouter } from "./routes/index.js";
 
@@ -24,6 +25,8 @@ app.get("/", (_request, response) => {
 
 app.use("/api", requestLogger);
 app.use("/api", apiRouter);
+
+app.use(errorHandler);
 
 app.listen(env.port, () => {
   console.log(`marketSpy backend listening on http://localhost:${env.port}`);

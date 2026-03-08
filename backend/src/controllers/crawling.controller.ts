@@ -1,6 +1,8 @@
 import type { Request, Response } from "express";
 import { isValidObjectId } from "mongoose";
 
+import type { ChangeReportResult } from "../services/crawling/change-detection.service.js";
+
 import { connectToDatabase } from "../config/database.js";
 import {
   loadPagePreview,
@@ -15,11 +17,70 @@ import {
   listCrawlSnapshots,
   saveCrawlSnapshot,
 } from "../services/crawling/snapshot.service.js";
+import { sendError } from "../utils/error-handler.js";
 
 type CrawlPreviewRequestBody = {
   url?: string;
   competitorId?: string;
 };
+
+export type CrawlSummary = {
+  type: "baseline" | "changes" | "unchanged";
+  headline: string;
+  details: string[];
+};
+
+function buildCrawlSummary(params: {
+  competitorName: string;
+  requestedUrl: string;
+  title: string;
+  h1: string | null;
+  snapshotId: string;
+  changeReport: ChangeReportResult | null;
+  hadPreviousSnapshot: boolean;
+}): CrawlSummary {
+  const { competitorName, requestedUrl, title, h1, snapshotId, changeReport, hadPreviousSnapshot } = params;
+
+  if (!hadPreviousSnapshot) {
+    return {
+      type: "baseline",
+      headline: "Captura inicial guardada",
+      details: [
+        `Competitor: ${competitorName}`,
+        `URL: ${requestedUrl}`,
+        title ? `Título: ${title}` : null,
+        h1 ? `H1: ${h1}` : null,
+        `Snapshot #${snapshotId.slice(-8)} guardado. En el próximo crawl se compararán los cambios.`,
+      ].filter(Boolean) as string[],
+    };
+  }
+
+  if (changeReport) {
+    const details: string[] = [];
+    if (changeReport.titleDiff) {
+      details.push(`Título: "${changeReport.titleDiff.from}" → "${changeReport.titleDiff.to}"`);
+    }
+    if (changeReport.h1Diff) {
+      details.push(
+        `H1: "${changeReport.h1Diff.from ?? "—"}" → "${changeReport.h1Diff.to ?? "—"}"`,
+      );
+    }
+    if (changeReport.htmlChanged) details.push("HTML modificado");
+    if (changeReport.visibleTextChanged) details.push("Texto visible modificado");
+
+    return {
+      type: "changes",
+      headline: "Cambios detectados",
+      details,
+    };
+  }
+
+  return {
+    type: "unchanged",
+    headline: "Sin cambios",
+    details: ["La página es idéntica al último snapshot."],
+  };
+}
 
 const isValidHttpUrl = (value: string): boolean => {
   try {
@@ -79,11 +140,21 @@ export const previewCrawl = async (
 
     const result: CrawlPreviewResult = await loadPagePreview(url);
     const savedSnapshot = await saveCrawlSnapshot(result, competitorId);
-    const changeReport = await detectAndSaveChanges(
+    const { changeReport, hadPreviousSnapshot } = await detectAndSaveChanges(
       savedSnapshot.id,
       competitorId,
       result.requestedUrl,
     );
+
+    const summary = buildCrawlSummary({
+      competitorName: competitor.name,
+      requestedUrl: result.requestedUrl,
+      title: result.title,
+      h1: result.h1,
+      snapshotId: savedSnapshot.id,
+      changeReport,
+      hadPreviousSnapshot,
+    });
 
     response.json({
       data: {
@@ -106,15 +177,11 @@ export const previewCrawl = async (
         htmlHash: savedSnapshot.htmlHash,
         visibleTextHash: savedSnapshot.visibleTextHash,
       },
+      summary,
       changeReport: changeReport ?? undefined,
     });
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Failed to crawl the URL.";
-
-    response.status(500).json({
-      message,
-    });
+    sendError(response, error, "Failed to crawl the URL.", "previewCrawl");
   }
 };
 
@@ -129,12 +196,7 @@ export const getCrawlingHistory = async (
       data: items,
     });
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Failed to load crawl history.";
-
-    response.status(500).json({
-      message,
-    });
+    sendError(response, error, "Failed to load crawl history.", "getCrawlingHistory");
   }
 };
 
@@ -149,13 +211,6 @@ export const getChangeReports = async (
       data: items,
     });
   } catch (error) {
-    const message =
-      error instanceof Error
-        ? error.message
-        : "Failed to load change reports.";
-
-    response.status(500).json({
-      message,
-    });
+    sendError(response, error, "Failed to load change reports.", "getChangeReports");
   }
 };

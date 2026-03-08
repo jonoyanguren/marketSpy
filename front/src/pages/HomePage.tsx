@@ -32,18 +32,11 @@ export function HomePage() {
     void loadCompetitors();
   }, []);
 
-  const handleCompetitorCreated = (competitor: Competitor) => {
-    setCompetitors((current) => [competitor, ...current]);
-    setSelectedCompetitorId(competitor.id);
-    setError("");
-  };
-
   return (
     <>
       <HealthSection />
       <CompetitorsSection
         competitors={competitors}
-        onCompetitorCreated={handleCompetitorCreated}
         onCompetitorSelected={setSelectedCompetitorId}
         selectedCompetitorId={selectedCompetitorId}
       />

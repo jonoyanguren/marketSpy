@@ -15,15 +15,22 @@ export type ChangeReportResult = {
   detectedAt: string;
 };
 
+export type DetectChangesResult = {
+  changeReport: ChangeReportResult | null;
+  hadPreviousSnapshot: boolean;
+};
+
 export async function detectAndSaveChanges(
   newSnapshotId: string,
   competitorId: string,
   requestedUrl: string,
-): Promise<ChangeReportResult | null> {
+): Promise<DetectChangesResult> {
   await connectToDatabase();
 
   const newSnapshot = await CrawlSnapshotModel.findById(newSnapshotId).lean();
-  if (!newSnapshot) return null;
+  if (!newSnapshot) {
+    return { changeReport: null, hadPreviousSnapshot: false };
+  }
 
   const previousSnapshot = await CrawlSnapshotModel.findOne({
     competitorId,
@@ -35,7 +42,9 @@ export async function detectAndSaveChanges(
     .limit(1)
     .lean();
 
-  if (!previousSnapshot) return null;
+  if (!previousSnapshot) {
+    return { changeReport: null, hadPreviousSnapshot: false };
+  }
 
   const htmlChanged = previousSnapshot.htmlHash !== newSnapshot.htmlHash;
   const visibleTextChanged =
@@ -46,7 +55,7 @@ export async function detectAndSaveChanges(
     String(previousSnapshot.h1 ?? "") !== String(newSnapshot.h1 ?? "");
 
   if (!htmlChanged && !visibleTextChanged && !titleChanged && !h1Changed) {
-    return null;
+    return { changeReport: null, hadPreviousSnapshot: true };
   }
 
   const report = await ChangeReportModel.create({
@@ -68,7 +77,7 @@ export async function detectAndSaveChanges(
     detectedAt: new Date(),
   });
 
-  return {
+  const result: ChangeReportResult = {
     id: String(report._id),
     snapshotAId: String(report.snapshotAId),
     snapshotBId: String(report.snapshotBId),
@@ -90,6 +99,8 @@ export async function detectAndSaveChanges(
       : null,
     detectedAt: report.detectedAt.toISOString(),
   };
+
+  return { changeReport: result, hadPreviousSnapshot: true };
 }
 
 export type ChangeReportListItem = {

@@ -56,8 +56,15 @@ export type ChangeReportItem = ChangeReportData & {
   competitor: { id: string; name: string; domain: string } | null;
 };
 
+export type CrawlSummary = {
+  type: "baseline" | "changes" | "unchanged";
+  headline: string;
+  details: string[];
+};
+
 type CrawlPreviewResponse = {
   data: CrawlPreviewData;
+  summary: CrawlSummary;
   changeReport?: ChangeReportData;
 };
 
@@ -72,7 +79,11 @@ type CrawlChangesResponse = {
 export async function previewCrawl(input: {
   url: string;
   competitorId: string;
-}): Promise<{ data: CrawlPreviewData; changeReport?: ChangeReportData }> {
+}): Promise<{
+  data: CrawlPreviewData;
+  summary: CrawlSummary;
+  changeReport?: ChangeReportData;
+}> {
   const response = await callApi<CrawlPreviewResponse>("/api/crawling/preview", {
     method: "POST",
     body: input,
@@ -80,6 +91,7 @@ export async function previewCrawl(input: {
 
   return {
     data: response.data,
+    summary: response.summary,
     changeReport: response.changeReport,
   };
 }

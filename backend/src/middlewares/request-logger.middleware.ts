@@ -13,15 +13,21 @@ export const requestLogger = (
   const startedAt = Date.now();
 
   response.on("finish", () => {
-    console.log(
-      [
-        "[api]",
-        request.method,
-        request.originalUrl,
-        String(response.statusCode),
-        formatDuration(startedAt),
-      ].join(" "),
-    );
+    const status = response.statusCode;
+    const line = [
+      "[api]",
+      request.method,
+      request.originalUrl,
+      String(status),
+      formatDuration(startedAt),
+    ].join(" ");
+
+    if (status >= 500) {
+      const bodyStr = JSON.stringify(request.body ?? {}).slice(0, 500);
+      console.error(line, "| body:", bodyStr + (bodyStr.length >= 500 ? "…" : ""));
+    } else {
+      console.log(line);
+    }
   });
 
   next();
