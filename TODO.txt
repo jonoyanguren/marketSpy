@@ -1,0 +1,19 @@
+# marketSpy – Próximos pasos
+
+## Prioridad alta
+
+- [ ] Crawl programado: job/cron que crawlee periódicamente los competitors activos (ej. cada hora o diario)
+- [ ] Endpoint de test: POST /api/dev/seed-test-changes para forzar ChangeReports en desarrollo (NODE_ENV check)
+
+## Prioridad media
+
+- [ ] URLs por competitor: permitir varias URLs por competitor (ej. /pricing, /features) además del dominio raíz
+- [ ] UI de diffs: página o modal que muestre antes/después de title, H1, texto visible (side-by-side o highlight)
+- [ ] History: filtros por competitor, paginación, orden por fecha
+- [ ] Mejorar página Cambios: filtro por competitor, enlace a snapshots A/B
+
+## Prioridad baja
+
+- [ ] Auth básica: si vas a desplegar como SaaS
+- [ ] Alertas: notificar (email/Slack) cuando se detecten cambios relevantes
+- [ ] Script npm run dev unificado: levantar front + backend + mongo con un solo comando
