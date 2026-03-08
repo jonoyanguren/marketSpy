@@ -57,16 +57,39 @@ function buildCrawlSummary(params: {
 
   if (changeReport) {
     const details: string[] = [];
-    if (changeReport.titleDiff) {
-      details.push(`Título: "${changeReport.titleDiff.from}" → "${changeReport.titleDiff.to}"`);
+    if (
+      changeReport.titleDiff &&
+      changeReport.titleDiff.from !== changeReport.titleDiff.to
+    ) {
+      details.push(
+        `Título: "${changeReport.titleDiff.from}" → "${changeReport.titleDiff.to}"`,
+      );
     }
-    if (changeReport.h1Diff) {
+    if (
+      changeReport.h1Diff &&
+      (changeReport.h1Diff.from ?? "") !== (changeReport.h1Diff.to ?? "")
+    ) {
       details.push(
         `H1: "${changeReport.h1Diff.from ?? "—"}" → "${changeReport.h1Diff.to ?? "—"}"`,
       );
     }
     if (changeReport.htmlChanged) details.push("HTML modificado");
-    if (changeReport.visibleTextChanged) details.push("Texto visible modificado");
+    if (changeReport.visibleTextDiff) {
+      for (const r of changeReport.visibleTextDiff.removed) {
+        details.push(`Contenido eliminado: "${r}"`);
+      }
+      for (const a of changeReport.visibleTextDiff.added) {
+        details.push(`Contenido añadido: "${a}"`);
+      }
+      if (
+        changeReport.visibleTextDiff.removed.length === 0 &&
+        changeReport.visibleTextDiff.added.length === 0
+      ) {
+        details.push("Texto visible modificado");
+      }
+    } else if (changeReport.visibleTextChanged) {
+      details.push("Texto visible modificado");
+    }
 
     return {
       type: "changes",

@@ -1,4 +1,4 @@
-import { type FormEvent, useEffect, useState } from "react";
+import { type FormEvent, useEffect, useRef, useState } from "react";
 
 import { ApiError } from "../api";
 import type { Competitor } from "../api/competitors";
@@ -229,11 +229,18 @@ export function CompetitorsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [createName, setCreateName] = useState("");
   const [createDomain, setCreateDomain] = useState("");
+  const [createUrls, setCreateUrls] = useState<string[]>([]);
+  const [createUrlInput, setCreateUrlInput] = useState("");
   const [isCreating, setIsCreating] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [editDomain, setEditDomain] = useState("");
+  const [editUrls, setEditUrls] = useState<string[]>([]);
+  const editUrlsRef = useRef<string[]>([]);
+  const [editUrlInput, setEditUrlInput] = useState("");
   const [isUpdating, setIsUpdating] = useState(false);
+
+  editUrlsRef.current = editUrls;
   const [baselineForId, setBaselineForId] = useState<string | null>(null);
   const [report, setReport] = useState<CompetitorReport | null>(null);
   const [isLoadingBaseline, setIsLoadingBaseline] = useState(false);
@@ -264,10 +271,15 @@ export function CompetitorsPage() {
     setIsCreating(true);
     setError("");
     try {
-      const c = await createCompetitor({ name: createName, domain: createDomain });
+      const c = await createCompetitor({
+        name: createName,
+        domain: createDomain,
+        urls: createUrls,
+      });
       setCompetitors((prev) => [c, ...prev]);
       setCreateName("");
       setCreateDomain("");
+      setCreateUrls([]);
     } catch (requestError) {
       setError(
         requestError instanceof ApiError || requestError instanceof Error
@@ -283,6 +295,7 @@ export function CompetitorsPage() {
     setEditingId(c.id);
     setEditName(c.name);
     setEditDomain(c.domain);
+    setEditUrls(c.urls ?? []);
   };
 
   const handleUpdate = async (e: FormEvent<HTMLFormElement>) => {
@@ -294,6 +307,7 @@ export function CompetitorsPage() {
       const c = await updateCompetitor(editingId, {
         name: editName,
         domain: editDomain,
+        urls: editUrlsRef.current,
       });
       setCompetitors((prev) =>
         prev.map((x) => (x.id === editingId ? c : x)),
@@ -356,28 +370,85 @@ export function CompetitorsPage() {
       </div>
 
       <form
-        className="mt-6 grid gap-4 md:grid-cols-[1fr_1fr_auto]"
+        className="mt-6 space-y-4"
         onSubmit={handleCreate}
       >
-        <input
-          className="rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-slate-100 outline-none transition focus:border-cyan-400"
-          value={createName}
-          onChange={(e) => setCreateName(e.target.value)}
-          placeholder="Nombre"
-        />
-        <input
-          className="rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-slate-100 outline-none transition focus:border-cyan-400"
-          value={createDomain}
-          onChange={(e) => setCreateDomain(e.target.value)}
-          placeholder="Domain (ej. python.org)"
-        />
-        <button
-          type="submit"
-          className="rounded-2xl bg-cyan-400 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-cyan-300 disabled:opacity-60"
-          disabled={isCreating}
-        >
-          {isCreating ? "Creando..." : "Crear"}
-        </button>
+        <div className="grid gap-4 md:grid-cols-[1fr_1fr_auto]">
+          <input
+            className="rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-slate-100 outline-none transition focus:border-cyan-400"
+            value={createName}
+            onChange={(e) => setCreateName(e.target.value)}
+            placeholder="Nombre"
+          />
+          <input
+            className="rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-slate-100 outline-none transition focus:border-cyan-400"
+            value={createDomain}
+            onChange={(e) => setCreateDomain(e.target.value)}
+            placeholder="Domain (ej. python.org)"
+          />
+          <button
+            type="submit"
+            className="rounded-2xl bg-cyan-400 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-cyan-300 disabled:opacity-60"
+            disabled={isCreating}
+          >
+            {isCreating ? "Creando..." : "Crear"}
+          </button>
+        </div>
+        <div>
+          <label className="mb-2 block text-xs text-slate-400">
+            URLs extra (paths o URLs completas)
+          </label>
+          <div className="flex gap-2">
+            <input
+              className="flex-1 rounded-2xl border border-slate-700 bg-slate-950 px-4 py-2 text-sm text-slate-100 outline-none transition focus:border-cyan-400"
+              value={createUrlInput}
+              onChange={(e) => setCreateUrlInput(e.target.value)}
+              placeholder="/pricing, /features o https://..."
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  if (createUrlInput.trim()) {
+                    setCreateUrls((prev) => [...prev, createUrlInput.trim()]);
+                    setCreateUrlInput("");
+                  }
+                }
+              }}
+            />
+            <button
+              type="button"
+              className="rounded-2xl border border-slate-600 px-4 py-2 text-sm hover:bg-slate-800"
+              onClick={() => {
+                if (createUrlInput.trim()) {
+                  setCreateUrls((prev) => [...prev, createUrlInput.trim()]);
+                  setCreateUrlInput("");
+                }
+              }}
+            >
+              Añadir
+            </button>
+          </div>
+          {createUrls.length > 0 ? (
+            <ul className="mt-2 flex flex-wrap gap-2">
+              {createUrls.map((u, i) => (
+                <li
+                  key={i}
+                  className="flex items-center gap-1 rounded-lg bg-slate-700/50 px-2 py-1 text-xs"
+                >
+                  {u}
+                  <button
+                    type="button"
+                    className="text-rose-400 hover:text-rose-300"
+                    onClick={() =>
+                      setCreateUrls((prev) => prev.filter((_, j) => j !== i))
+                    }
+                  >
+                    ×
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
       </form>
 
       {error ? (
@@ -403,41 +474,107 @@ export function CompetitorsPage() {
             >
               {editingId === c.id ? (
                 <form
-                  className="flex flex-1 flex-wrap gap-3"
+                  className="flex w-full flex-col gap-3"
                   onSubmit={handleUpdate}
                 >
-                  <input
-                    className="rounded-xl border border-slate-600 bg-slate-900 px-3 py-2 text-sm"
-                    value={editName}
-                    onChange={(e) => setEditName(e.target.value)}
-                  />
-                  <input
-                    className="rounded-xl border border-slate-600 bg-slate-900 px-3 py-2 text-sm"
-                    value={editDomain}
-                    onChange={(e) => setEditDomain(e.target.value)}
-                  />
-                  <button
-                    type="submit"
-                    className="rounded-xl bg-cyan-400 px-4 py-2 text-sm font-medium text-slate-950 disabled:opacity-60"
-                    disabled={isUpdating}
-                  >
-                    Guardar
-                  </button>
-                  <button
-                    type="button"
-                    className="rounded-xl border border-slate-600 px-4 py-2 text-sm"
-                    onClick={() => setEditingId(null)}
-                  >
-                    Cancelar
-                  </button>
+                  <div className="flex flex-wrap gap-3">
+                    <input
+                      className="rounded-xl border border-slate-600 bg-slate-900 px-3 py-2 text-sm"
+                      value={editName}
+                      onChange={(e) => setEditName(e.target.value)}
+                    />
+                    <input
+                      className="rounded-xl border border-slate-600 bg-slate-900 px-3 py-2 text-sm"
+                      value={editDomain}
+                      onChange={(e) => setEditDomain(e.target.value)}
+                    />
+                    <button
+                      type="submit"
+                      className="rounded-xl bg-cyan-400 px-4 py-2 text-sm font-medium text-slate-950 disabled:opacity-60"
+                      disabled={isUpdating}
+                    >
+                      Guardar
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded-xl border border-slate-600 px-4 py-2 text-sm"
+                      onClick={() => setEditingId(null)}
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                  <div>
+                    <span className="text-xs text-slate-500">URLs extra:</span>
+                    <div className="mt-1 flex gap-2">
+                      <input
+                        className="flex-1 rounded-xl border border-slate-600 bg-slate-900 px-3 py-2 text-sm"
+                        value={editUrlInput}
+                        onChange={(e) => setEditUrlInput(e.target.value)}
+                        placeholder="/pricing"
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            if (editUrlInput.trim()) {
+                              setEditUrls((prev) => [...prev, editUrlInput.trim()]);
+                              setEditUrlInput("");
+                            }
+                          }
+                        }}
+                      />
+                      <button
+                        type="button"
+                        className="rounded-xl border border-slate-600 px-3 py-2 text-sm"
+                        onClick={() => {
+                          if (editUrlInput.trim()) {
+                            setEditUrls((prev) => [...prev, editUrlInput.trim()]);
+                            setEditUrlInput("");
+                          }
+                        }}
+                      >
+                        +
+                      </button>
+                    </div>
+                    {editUrls.length > 0 ? (
+                      <ul className="mt-2 flex flex-wrap gap-2">
+                        {editUrls.map((u, i) => (
+                          <li
+                            key={i}
+                            className="flex items-center gap-1 rounded bg-slate-700/50 px-2 py-0.5 text-xs"
+                          >
+                            {u}
+                            <button
+                              type="button"
+                              className="text-rose-400 hover:text-rose-300"
+                              onClick={() =>
+                                setEditUrls((prev) => prev.filter((_, j) => j !== i))
+                              }
+                            >
+                              ×
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
+                  </div>
                 </form>
               ) : (
                 <>
-                  <span className="font-medium text-white">
-                    {c.name}
-                  </span>
-                  <span className="text-slate-400">({c.domain})</span>
-                  <div className="ml-auto flex gap-2">
+                  <div className="flex flex-1 flex-col gap-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-medium text-white">{c.name}</span>
+                      <span className="text-slate-400">({c.domain})</span>
+                    </div>
+                    <ul className="text-xs text-slate-500">
+                      <li className="font-medium text-slate-400">URLs en BD:</li>
+                      <li className="break-all">https://{c.domain} (raíz)</li>
+                      {(c.urls ?? []).map((u) => (
+                        <li key={u} className="break-all pl-2">
+                          {u}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div className="flex gap-2">
                     <button
                       type="button"
                       className="rounded-xl bg-slate-700 px-3 py-1.5 text-xs font-medium text-slate-200 hover:bg-slate-600"

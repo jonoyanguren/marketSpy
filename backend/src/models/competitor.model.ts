@@ -19,6 +19,10 @@ const competitorSchema = new Schema(
       required: true,
       default: true,
     },
+    urls: {
+      type: [String],
+      default: () => [],
+    },
   },
   {
     versionKey: false,

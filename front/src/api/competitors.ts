@@ -5,6 +5,7 @@ export type Competitor = {
   name: string;
   domain: string;
   active: boolean;
+  urls?: string[];
   createdAt: string;
 };
 
@@ -27,6 +28,7 @@ export async function getCompetitors(): Promise<Competitor[]> {
 export async function createCompetitor(input: {
   name: string;
   domain: string;
+  urls?: string[];
 }): Promise<Competitor> {
   const response = await callApi<CreateCompetitorResponse>("/api/competitors", {
     method: "POST",
@@ -38,7 +40,7 @@ export async function createCompetitor(input: {
 
 export async function updateCompetitor(
   id: string,
-  input: { name?: string; domain?: string },
+  input: { name?: string; domain?: string; urls?: string[] },
 ): Promise<Competitor> {
   const response = await callApi<CreateCompetitorResponse>(
     `/api/competitors/${id}`,

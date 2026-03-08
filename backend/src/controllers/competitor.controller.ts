@@ -10,11 +10,13 @@ import { CrawlSnapshotModel } from "../models/crawl-snapshot.model.js";
 type CreateCompetitorBody = {
   name?: string;
   domain?: string;
+  urls?: string[];
 };
 
 type UpdateCompetitorBody = {
   name?: string;
   domain?: string;
+  urls?: string[];
 };
 
 const normalizeDomain = (value: string): string => {
@@ -22,6 +24,18 @@ const normalizeDomain = (value: string): string => {
   const parsed = new URL(withProtocol);
   return parsed.hostname.toLowerCase();
 };
+
+/** Normalize URL entry (path or full URL) to absolute URL using domain */
+function normalizeUrl(entry: string, domain: string): string {
+  const trimmed = entry.trim();
+  if (!trimmed) return "";
+  if (/^https?:\/\//i.test(trimmed)) {
+    const parsed = new URL(trimmed);
+    return parsed.toString();
+  }
+  const path = trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+  return `https://${domain}${path}`;
+}
 
 export const listCompetitors = async (
   _request: Request,
@@ -40,6 +54,7 @@ export const listCompetitors = async (
         name: competitor.name,
         domain: competitor.domain,
         active: competitor.active,
+        urls: (competitor.urls ?? []).filter(Boolean),
         createdAt: competitor.createdAt.toISOString(),
       })),
     });
@@ -92,10 +107,20 @@ export const createCompetitor = async (
       return;
     }
 
+    const rawUrls = request.body?.urls;
+    const urls = Array.isArray(rawUrls)
+      ? [...new Set(
+          rawUrls
+            .map((u) => normalizeUrl(String(u), domain))
+            .filter(Boolean),
+        )]
+      : [];
+
     const competitor = await CompetitorModel.create({
       name,
       domain,
       active: true,
+      urls,
     });
 
     response.status(201).json({
@@ -104,6 +129,7 @@ export const createCompetitor = async (
         name: competitor.name,
         domain: competitor.domain,
         active: competitor.active,
+        urls: competitor.urls ?? [],
         createdAt: competitor.createdAt.toISOString(),
       },
     });
@@ -119,6 +145,7 @@ export const updateCompetitor = async (
   const id = request.params?.id?.trim();
   const name = request.body?.name?.trim();
   const rawDomain = request.body?.domain?.trim();
+  const rawUrls = request.body?.urls;
 
   if (!id || !isValidObjectId(id)) {
     response.status(400).json({
@@ -127,9 +154,9 @@ export const updateCompetitor = async (
     return;
   }
 
-  if (!name && !rawDomain) {
+  if (!name && !rawDomain && rawUrls === undefined) {
     response.status(400).json({
-      message: "Provide at least `name` or `domain` to update.",
+      message: "Provide at least `name`, `domain` or `urls` to update.",
     });
     return;
   }
@@ -159,7 +186,9 @@ export const updateCompetitor = async (
       return;
     }
 
-    if (name) competitor.name = name;
+    const update: Record<string, unknown> = {};
+
+    if (name) update.name = name;
     if (domain !== undefined) {
       const existing = await CompetitorModel.findOne({
         domain,
@@ -171,18 +200,39 @@ export const updateCompetitor = async (
         });
         return;
       }
-      competitor.domain = domain;
+      update.domain = domain;
     }
 
-    await competitor.save();
+    if (Array.isArray(rawUrls)) {
+      const baseDomain = (update.domain as string | undefined) ?? competitor.domain;
+      update.urls = [
+        ...new Set(
+          rawUrls
+            .map((u) => normalizeUrl(String(u), baseDomain))
+            .filter(Boolean),
+        ),
+      ];
+    }
 
+    const updated = Object.keys(update).length > 0
+      ? await CompetitorModel.findByIdAndUpdate(id, { $set: update }, { new: true })
+          .lean()
+      : competitor?.toObject?.() ?? competitor;
+
+    if (!updated) {
+      response.status(404).json({ message: "Competitor not found." });
+      return;
+    }
+
+    const doc = updated as { _id: unknown; name: string; domain: string; active: boolean; urls?: string[]; createdAt: Date };
     response.json({
       data: {
-        id: competitor.id,
-        name: competitor.name,
-        domain: competitor.domain,
-        active: competitor.active,
-        createdAt: competitor.createdAt.toISOString(),
+        id: String(doc._id),
+        name: doc.name,
+        domain: doc.domain,
+        active: doc.active,
+        urls: (doc.urls ?? []).filter(Boolean),
+        createdAt: (doc.createdAt as Date).toISOString(),
       },
     });
   } catch (error) {

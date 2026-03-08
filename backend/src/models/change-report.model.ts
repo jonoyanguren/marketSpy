@@ -35,6 +35,10 @@ const changeReportSchema = new Schema(
       from: Schema.Types.Mixed,
       to: Schema.Types.Mixed,
     },
+    visibleTextDiff: {
+      added: [String],
+      removed: [String],
+    },
     detectedAt: {
       type: Date,
       required: true,

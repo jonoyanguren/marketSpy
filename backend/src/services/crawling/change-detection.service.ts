@@ -1,6 +1,7 @@
 import { connectToDatabase } from "../../config/database.js";
 import { ChangeReportModel } from "../../models/change-report.model.js";
 import { CrawlSnapshotModel } from "../../models/crawl-snapshot.model.js";
+import { computeVisibleTextDiff } from "../../utils/text-diff.js";
 
 export type ChangeReportResult = {
   id: string;
@@ -12,6 +13,7 @@ export type ChangeReportResult = {
   visibleTextChanged: boolean;
   titleDiff: { from: string; to: string } | null;
   h1Diff: { from: string | null; to: string | null } | null;
+  visibleTextDiff: { added: string[]; removed: string[] } | null;
   detectedAt: string;
 };
 
@@ -49,14 +51,25 @@ export async function detectAndSaveChanges(
   const htmlChanged = previousSnapshot.htmlHash !== newSnapshot.htmlHash;
   const visibleTextChanged =
     previousSnapshot.visibleTextHash !== newSnapshot.visibleTextHash;
-  const titleChanged =
-    (previousSnapshot.title ?? "") !== (newSnapshot.title ?? "");
-  const h1Changed =
-    String(previousSnapshot.h1 ?? "") !== String(newSnapshot.h1 ?? "");
+
+  const prevTitle = (previousSnapshot.title ?? "").trim();
+  const newTitle = (newSnapshot.title ?? "").trim();
+  const prevH1 = String(previousSnapshot.h1 ?? "").trim();
+  const newH1 = String(newSnapshot.h1 ?? "").trim();
+
+  const titleChanged = prevTitle !== newTitle;
+  const h1Changed = prevH1 !== newH1;
 
   if (!htmlChanged && !visibleTextChanged && !titleChanged && !h1Changed) {
     return { changeReport: null, hadPreviousSnapshot: true };
   }
+
+  const visibleTextDiff = visibleTextChanged
+    ? computeVisibleTextDiff(
+        previousSnapshot.visibleText ?? "",
+        newSnapshot.visibleText ?? "",
+      )
+    : undefined;
 
   const report = await ChangeReportModel.create({
     snapshotAId: previousSnapshot._id,
@@ -65,15 +78,15 @@ export async function detectAndSaveChanges(
     requestedUrl,
     htmlChanged,
     visibleTextChanged,
-    titleDiff: titleChanged
-      ? { from: previousSnapshot.title ?? "", to: newSnapshot.title ?? "" }
-      : undefined,
+    titleDiff: titleChanged ? { from: prevTitle, to: newTitle } : undefined,
     h1Diff: h1Changed
-      ? {
-          from: previousSnapshot.h1 ?? null,
-          to: newSnapshot.h1 ?? null,
-        }
+      ? { from: prevH1 || null, to: newH1 || null }
       : undefined,
+    visibleTextDiff:
+      visibleTextDiff &&
+      (visibleTextDiff.added.length > 0 || visibleTextDiff.removed.length > 0)
+        ? visibleTextDiff
+        : undefined,
     detectedAt: new Date(),
   });
 
@@ -97,6 +110,15 @@ export async function detectAndSaveChanges(
           to: report.h1Diff.to ?? null,
         }
       : null,
+    visibleTextDiff:
+      report.visibleTextDiff &&
+      (report.visibleTextDiff.added?.length > 0 ||
+        report.visibleTextDiff.removed?.length > 0)
+        ? {
+            added: report.visibleTextDiff.added ?? [],
+            removed: report.visibleTextDiff.removed ?? [],
+          }
+        : null,
     detectedAt: report.detectedAt.toISOString(),
   };
 
@@ -113,6 +135,7 @@ export type ChangeReportListItem = {
   visibleTextChanged: boolean;
   titleDiff: { from: string; to: string } | null;
   h1Diff: { from: string | null; to: string | null } | null;
+  visibleTextDiff: { added: string[]; removed: string[] } | null;
   detectedAt: string;
 };
 
@@ -149,6 +172,15 @@ export async function listChangeReports(): Promise<ChangeReportListItem[]> {
     h1Diff: r.h1Diff
       ? { from: r.h1Diff.from ?? null, to: r.h1Diff.to ?? null }
       : null,
+    visibleTextDiff:
+      r.visibleTextDiff &&
+      (r.visibleTextDiff.added?.length > 0 ||
+        r.visibleTextDiff.removed?.length > 0)
+        ? {
+            added: r.visibleTextDiff.added ?? [],
+            removed: r.visibleTextDiff.removed ?? [],
+          }
+        : null,
     detectedAt: r.detectedAt.toISOString(),
   }));
 }

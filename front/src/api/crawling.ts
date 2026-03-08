@@ -49,6 +49,7 @@ export type ChangeReportData = {
   visibleTextChanged: boolean;
   titleDiff: { from: string; to: string } | null;
   h1Diff: { from: string | null; to: string | null } | null;
+  visibleTextDiff?: { added: string[]; removed: string[] } | null;
   detectedAt: string;
 };
 

@@ -75,24 +75,45 @@ export function ChangesPage() {
               </p>
               <p className="mt-1 break-all text-slate-400">{item.requestedUrl}</p>
               <p className="mt-1 text-slate-500">{item.detectedAt}</p>
-              <ul className="mt-3 list-inside list-disc space-y-1">
+              <ul className="mt-3 space-y-2">
+                {item.titleDiff &&
+                item.titleDiff.from !== item.titleDiff.to ? (
+                  <li>
+                    <span className="text-slate-500">Título:</span> &quot;
+                    {item.titleDiff.from}&quot; → &quot;{item.titleDiff.to}
+                    &quot;
+                  </li>
+                ) : null}
+                {item.h1Diff &&
+                (item.h1Diff.from ?? "") !== (item.h1Diff.to ?? "") ? (
+                  <li>
+                    <span className="text-slate-500">H1:</span> &quot;
+                    {item.h1Diff.from ?? "—"}&quot; → &quot;
+                    {item.h1Diff.to ?? "—"}&quot;
+                  </li>
+                ) : null}
+                {item.visibleTextDiff &&
+                (item.visibleTextDiff.removed?.length > 0 ||
+                  item.visibleTextDiff.added?.length > 0) ? (
+                  <>
+                    {item.visibleTextDiff.removed?.map((r, i) => (
+                      <li key={`removed-${i}`} className="text-rose-300">
+                        <span className="text-slate-500">Eliminado:</span> &quot;
+                        {r}&quot;
+                      </li>
+                    ))}
+                    {item.visibleTextDiff.added?.map((a, i) => (
+                      <li key={`added-${i}`} className="text-emerald-300">
+                        <span className="text-slate-500">Añadido:</span> &quot;
+                        {a}&quot;
+                      </li>
+                    ))}
+                  </>
+                ) : item.visibleTextChanged ? (
+                  <li>Texto visible modificado</li>
+                ) : null}
                 {item.htmlChanged ? (
-                  <li>HTML cambio (hash distinto)</li>
-                ) : null}
-                {item.visibleTextChanged ? (
-                  <li>Texto visible cambio (hash distinto)</li>
-                ) : null}
-                {item.titleDiff ? (
-                  <li>
-                    Title: &quot;{item.titleDiff.from}&quot; →
-                    &quot;{item.titleDiff.to}&quot;
-                  </li>
-                ) : null}
-                {item.h1Diff ? (
-                  <li>
-                    H1: &quot;{item.h1Diff.from ?? "—"}&quot; →
-                    &quot;{item.h1Diff.to ?? "—"}&quot;
-                  </li>
+                  <li className="text-slate-400">HTML modificado</li>
                 ) : null}
               </ul>
               <div className="mt-3 text-xs text-slate-600">
