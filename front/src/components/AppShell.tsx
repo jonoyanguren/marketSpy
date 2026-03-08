@@ -30,6 +30,9 @@ export function AppShell() {
             <NavLink className={navLinkClassName} to="/history">
               History
             </NavLink>
+            <NavLink className={navLinkClassName} to="/changes">
+              Cambios
+            </NavLink>
           </nav>
         </header>
 

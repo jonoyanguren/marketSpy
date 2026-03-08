@@ -8,6 +8,10 @@ import {
 } from "../services/crawling/page-loader.service.js";
 import { CompetitorModel } from "../models/competitor.model.js";
 import {
+  detectAndSaveChanges,
+  listChangeReports,
+} from "../services/crawling/change-detection.service.js";
+import {
   listCrawlSnapshots,
   saveCrawlSnapshot,
 } from "../services/crawling/snapshot.service.js";
@@ -75,6 +79,11 @@ export const previewCrawl = async (
 
     const result: CrawlPreviewResult = await loadPagePreview(url);
     const savedSnapshot = await saveCrawlSnapshot(result, competitorId);
+    const changeReport = await detectAndSaveChanges(
+      savedSnapshot.id,
+      competitorId,
+      result.requestedUrl,
+    );
 
     response.json({
       data: {
@@ -97,6 +106,7 @@ export const previewCrawl = async (
         htmlHash: savedSnapshot.htmlHash,
         visibleTextHash: savedSnapshot.visibleTextHash,
       },
+      changeReport: changeReport ?? undefined,
     });
   } catch (error) {
     const message =
@@ -121,6 +131,28 @@ export const getCrawlingHistory = async (
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Failed to load crawl history.";
+
+    response.status(500).json({
+      message,
+    });
+  }
+};
+
+export const getChangeReports = async (
+  _request: Request,
+  response: Response,
+): Promise<void> => {
+  try {
+    const items = await listChangeReports();
+
+    response.json({
+      data: items,
+    });
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Failed to load change reports.";
 
     response.status(500).json({
       message,

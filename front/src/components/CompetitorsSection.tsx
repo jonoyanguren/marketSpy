@@ -3,7 +3,11 @@ import { type FormEvent, useState } from "react";
 import { ApiError } from "../api";
 import type { Competitor } from "../api/competitors";
 import { createCompetitor } from "../api/competitors";
-import { previewCrawl, type CrawlPreviewData } from "../api/crawling";
+import {
+  previewCrawl,
+  type CrawlPreviewData,
+  type ChangeReportData,
+} from "../api/crawling";
 
 type CompetitorsSectionProps = {
   competitors: Competitor[];
@@ -21,6 +25,8 @@ export function CompetitorsSection({
   const [name, setName] = useState("");
   const [domain, setDomain] = useState("");
   const [crawlResult, setCrawlResult] = useState<CrawlPreviewData | null>(null);
+  const [changeReport, setChangeReport] =
+    useState<ChangeReportData | null>(null);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isCrawling, setIsCrawling] = useState(false);
@@ -61,15 +67,19 @@ export function CompetitorsSection({
 
     setIsCrawling(true);
     setError("");
+    setCrawlResult(null);
+    setChangeReport(null);
 
     try {
-      const data = await previewCrawl({
+      const { data, changeReport: cr } = await previewCrawl({
         url: domainToUrl(competitor.domain),
         competitorId: selectedCompetitorId,
       });
       setCrawlResult(data);
+      setChangeReport(cr ?? null);
     } catch (requestError) {
       setCrawlResult(null);
+      setChangeReport(null);
       setError(
         requestError instanceof ApiError || requestError instanceof Error
           ? requestError.message
@@ -125,6 +135,7 @@ export function CompetitorsSection({
             onChange={(event) => {
               onCompetitorSelected(event.target.value);
               setCrawlResult(null);
+              setChangeReport(null);
             }}
           >
             <option value="">Selecciona un competitor</option>
@@ -160,41 +171,70 @@ export function CompetitorsSection({
       ) : null}
 
       {crawlResult ? (
-        <div className="mt-6 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-5 text-sm text-emerald-200">
-          <p>
-            <strong>Competitor:</strong> {crawlResult.competitor.name} (
-            {crawlResult.competitor.domain})
-          </p>
-          <p>
-            <strong>Requested URL:</strong> {crawlResult.requestedUrl}
-          </p>
-          <p>
-            <strong>Final URL:</strong> {crawlResult.finalUrl}
-          </p>
-          <p>
-            <strong>Title:</strong> {crawlResult.title || "Sin titulo"}
-          </p>
-          <p>
-            <strong>H1:</strong> {crawlResult.h1 || "Sin H1"}
-          </p>
-          <p>
-            <strong>HTML length:</strong> {crawlResult.htmlLength}
-          </p>
-          <p>
-            <strong>Visible text length:</strong> {crawlResult.visibleTextLength}
-          </p>
-          <p>
-            <strong>Snapshot ID:</strong> {crawlResult.snapshotId}
-          </p>
-          <p>
-            <strong>Crawled at:</strong> {crawlResult.crawledAt}
-          </p>
-          <p className="break-all">
-            <strong>HTML hash:</strong> {crawlResult.htmlHash}
-          </p>
-          <p className="break-all">
-            <strong>Visible text hash:</strong> {crawlResult.visibleTextHash}
-          </p>
+        <div className="mt-6 space-y-4">
+          {changeReport ? (
+            <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-5 text-sm text-amber-200">
+              <p className="font-semibold text-amber-100">
+                Cambios detectados vs snapshot anterior
+              </p>
+              <ul className="mt-2 list-inside list-disc space-y-1">
+                {changeReport.htmlChanged ? (
+                  <li>HTML cambio (hash distinto)</li>
+                ) : null}
+                {changeReport.visibleTextChanged ? (
+                  <li>Texto visible cambio (hash distinto)</li>
+                ) : null}
+                {changeReport.titleDiff ? (
+                  <li>
+                    Title: "{changeReport.titleDiff.from}" → "
+                    {changeReport.titleDiff.to}"
+                  </li>
+                ) : null}
+                {changeReport.h1Diff ? (
+                  <li>
+                    H1: "{changeReport.h1Diff.from ?? "—"}" → "
+                    {changeReport.h1Diff.to ?? "—"}"
+                  </li>
+                ) : null}
+              </ul>
+            </div>
+          ) : null}
+          <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-5 text-sm text-emerald-200">
+            <p>
+              <strong>Competitor:</strong> {crawlResult.competitor.name} (
+              {crawlResult.competitor.domain})
+            </p>
+            <p>
+              <strong>Requested URL:</strong> {crawlResult.requestedUrl}
+            </p>
+            <p>
+              <strong>Final URL:</strong> {crawlResult.finalUrl}
+            </p>
+            <p>
+              <strong>Title:</strong> {crawlResult.title || "Sin titulo"}
+            </p>
+            <p>
+              <strong>H1:</strong> {crawlResult.h1 || "Sin H1"}
+            </p>
+            <p>
+              <strong>HTML length:</strong> {crawlResult.htmlLength}
+            </p>
+            <p>
+              <strong>Visible text length:</strong> {crawlResult.visibleTextLength}
+            </p>
+            <p>
+              <strong>Snapshot ID:</strong> {crawlResult.snapshotId}
+            </p>
+            <p>
+              <strong>Crawled at:</strong> {crawlResult.crawledAt}
+            </p>
+            <p className="break-all">
+              <strong>HTML hash:</strong> {crawlResult.htmlHash}
+            </p>
+            <p className="break-all">
+              <strong>Visible text hash:</strong> {crawlResult.visibleTextHash}
+            </p>
+          </div>
         </div>
       ) : selectedCompetitorId ? (
         <div className="mt-6 rounded-2xl border border-slate-800 bg-slate-950 p-5 text-sm text-slate-400">

@@ -39,30 +39,64 @@ export type CrawlHistoryItem = {
   crawledAt: string;
 };
 
+export type ChangeReportData = {
+  id: string;
+  snapshotAId: string;
+  snapshotBId: string;
+  competitorId: string;
+  requestedUrl: string;
+  htmlChanged: boolean;
+  visibleTextChanged: boolean;
+  titleDiff: { from: string; to: string } | null;
+  h1Diff: { from: string | null; to: string | null } | null;
+  detectedAt: string;
+};
+
+export type ChangeReportItem = ChangeReportData & {
+  competitor: { id: string; name: string; domain: string } | null;
+};
+
 type CrawlPreviewResponse = {
   data: CrawlPreviewData;
+  changeReport?: ChangeReportData;
 };
 
 type CrawlHistoryResponse = {
   data: CrawlHistoryItem[];
 };
 
+type CrawlChangesResponse = {
+  data: ChangeReportItem[];
+};
+
 export async function previewCrawl(input: {
   url: string;
   competitorId: string;
-}): Promise<CrawlPreviewData> {
+}): Promise<{ data: CrawlPreviewData; changeReport?: ChangeReportData }> {
   const response = await callApi<CrawlPreviewResponse>("/api/crawling/preview", {
     method: "POST",
     body: input,
   });
 
-  return response.data;
+  return {
+    data: response.data,
+    changeReport: response.changeReport,
+  };
 }
 
 export async function getCrawlHistory(): Promise<CrawlHistoryItem[]> {
   const response = await callApi<CrawlHistoryResponse>("/api/crawling/history", {
     method: "GET",
   });
+
+  return response.data;
+}
+
+export async function getChangeReports(): Promise<ChangeReportItem[]> {
+  const response = await callApi<CrawlChangesResponse>(
+    "/api/crawling/changes",
+    { method: "GET" },
+  );
 
   return response.data;
 }
