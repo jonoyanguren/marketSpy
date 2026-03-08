@@ -7,6 +7,7 @@ export type CrawlPreviewResult = {
   h1: string | null;
   html: string;
   visibleText: string;
+  discoveredUrls: string[];
 };
 
 const normalizeVisibleText = (text: string): string => {
@@ -30,6 +31,46 @@ const tryDismissCookieBanners = async (page: Page): Promise<void> => {
       return;
     }
   }
+};
+
+const MAX_DISCOVERED_URLS = 8;
+
+const normalizeDiscoveredUrl = (value: string): string => {
+  const parsed = new URL(value);
+  parsed.hash = "";
+  parsed.search = "";
+  if (parsed.pathname !== "/" && parsed.pathname.endsWith("/")) {
+    parsed.pathname = parsed.pathname.slice(0, -1);
+  }
+  return parsed.toString();
+};
+
+const discoverInternalUrls = async (page: Page, baseUrl: string): Promise<string[]> => {
+  const base = new URL(baseUrl);
+  const links = await page
+    .locator("a[href]")
+    .evaluateAll((anchors) =>
+      anchors
+        .map((anchor) => (anchor as HTMLAnchorElement).href)
+        .filter(Boolean),
+    )
+    .catch(() => []);
+
+  const unique = new Set<string>();
+  for (const href of links) {
+    try {
+      const parsed = new URL(href);
+      if (parsed.origin !== base.origin) continue;
+      const normalized = normalizeDiscoveredUrl(parsed.toString());
+      if (normalized === normalizeDiscoveredUrl(base.toString())) continue;
+      unique.add(normalized);
+      if (unique.size >= MAX_DISCOVERED_URLS) break;
+    } catch {
+      // ignore invalid href
+    }
+  }
+
+  return [...unique];
 };
 
 export async function loadPagePreview(
@@ -58,11 +99,12 @@ export async function loadPagePreview(
 
     await tryDismissCookieBanners(page);
 
-    const [title, html, h1, bodyText] = await Promise.all([
+    const [title, html, h1, bodyText, discoveredUrls] = await Promise.all([
       page.title(),
       page.content(),
       page.locator("h1").first().textContent().catch(() => null),
       page.locator("body").innerText().catch(() => ""),
+      discoverInternalUrls(page, page.url()),
     ]);
 
     return {
@@ -72,6 +114,7 @@ export async function loadPagePreview(
       h1: h1?.trim() || null,
       html,
       visibleText: normalizeVisibleText(bodyText),
+      discoveredUrls,
     };
   } finally {
     await browser.close();

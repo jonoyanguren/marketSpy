@@ -2,7 +2,7 @@ import { type FormEvent, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { ApiError } from "../api";
-import type { Competitor } from "../api/competitors";
+import { updateCompetitor, type Competitor } from "../api/competitors";
 import { previewCrawl, type CrawlSummary } from "../api/crawling";
 
 type CompetitorsSectionProps = {
@@ -20,12 +20,39 @@ export function CompetitorsSection({
   const [selectedUrl, setSelectedUrl] = useState("");
   const [error, setError] = useState("");
   const [isCrawling, setIsCrawling] = useState(false);
+  const [localUrlsByCompetitor, setLocalUrlsByCompetitor] = useState<
+    Record<string, string[]>
+  >({});
+  const [showDiscoveryModal, setShowDiscoveryModal] = useState(false);
+  const [discoveredCandidates, setDiscoveredCandidates] = useState<string[]>([]);
+  const [selectedDiscoveredUrls, setSelectedDiscoveredUrls] = useState<string[]>([]);
 
   const domainToUrl = (d: string): string =>
     /^https?:\/\//i.test(d) ? d : `https://${d}`;
+  const normalizeUrl = (u: string): string => {
+    try {
+      const parsed = new URL(u);
+      parsed.hash = "";
+      parsed.search = "";
+      if (parsed.pathname !== "/" && parsed.pathname.endsWith("/")) {
+        parsed.pathname = parsed.pathname.slice(0, -1);
+      }
+      return parsed.toString();
+    } catch {
+      return u.trim();
+    }
+  };
 
   const competitor = competitors.find((c) => c.id === selectedCompetitorId);
   const baseUrl = competitor ? domainToUrl(competitor.domain) : "";
+  const mergedUrls = competitor
+    ? [
+        ...new Set([
+          ...(competitor.urls ?? []),
+          ...(localUrlsByCompetitor[competitor.id] ?? []),
+        ]),
+      ]
+    : [];
   const crawlOptions: { value: string; label: string }[] = competitor
     ? (() => {
         const seen = new Set<string>();
@@ -35,7 +62,7 @@ export function CompetitorsSection({
           seen.add(root.value);
           opts.push(root);
         }
-        for (const u of competitor.urls ?? []) {
+        for (const u of mergedUrls) {
           const val = u.startsWith("/") ? baseUrl + u : u;
           if (!seen.has(val)) {
             seen.add(val);
@@ -47,11 +74,10 @@ export function CompetitorsSection({
     : [];
 
   const runCrawl = async (url: string) => {
-    const { summary: s } = await previewCrawl({
+    return previewCrawl({
       url,
       competitorId: selectedCompetitorId!,
     });
-    return s;
   };
 
   const handleCrawl = async (event: FormEvent<HTMLFormElement>) => {
@@ -78,8 +104,20 @@ export function CompetitorsSection({
     setSummary(null);
 
     try {
-      const s = await runCrawl(urlToCrawl);
-      setSummary(s);
+      const result = await runCrawl(urlToCrawl);
+      setSummary(result.summary);
+      if ((result.data.discoveredUrls?.length ?? 0) > 0 && competitor) {
+        const known = new Set(
+          mergedUrls.map((u) => normalizeUrl(u.startsWith("/") ? baseUrl + u : u)),
+        );
+        const allDiscovered = result.data.discoveredUrls ?? [];
+        const preselected = allDiscovered.filter(
+          (u) => !known.has(normalizeUrl(u)),
+        );
+        setDiscoveredCandidates(allDiscovered);
+        setSelectedDiscoveredUrls(preselected);
+        setShowDiscoveryModal(true);
+      }
     } catch (requestError) {
       setSummary(null);
       setError(
@@ -103,8 +141,8 @@ export function CompetitorsSection({
     try {
       for (const opt of crawlOptions) {
         try {
-          const s = await runCrawl(opt.value);
-          results.push(`${opt.label}: ${s.headline}`);
+          const r = await runCrawl(opt.value);
+          results.push(`${opt.label}: ${r.summary.headline}`);
         } catch (e) {
           results.push(
             `${opt.label}: Error - ${e instanceof Error ? e.message : "fallo"}`,
@@ -122,6 +160,58 @@ export function CompetitorsSection({
         requestError instanceof ApiError || requestError instanceof Error
           ? requestError.message
           : "Unable to reach the backend.",
+      );
+    } finally {
+      setIsCrawling(false);
+    }
+  };
+
+  const handleCrawlSelectedDiscovered = async () => {
+    if (!competitor || selectedDiscoveredUrls.length === 0) {
+      setShowDiscoveryModal(false);
+      return;
+    }
+
+    setIsCrawling(true);
+    setError("");
+    try {
+      const absoluteKnown = new Set(
+        mergedUrls.map((u) => normalizeUrl(u.startsWith("/") ? baseUrl + u : u)),
+      );
+      for (const u of selectedDiscoveredUrls) {
+        absoluteKnown.add(normalizeUrl(u));
+      }
+      const updatedUrls = [...absoluteKnown];
+      await updateCompetitor(competitor.id, { urls: updatedUrls });
+      setLocalUrlsByCompetitor((prev) => ({
+        ...prev,
+        [competitor.id]: updatedUrls,
+      }));
+
+      const details: string[] = [];
+      for (const url of selectedDiscoveredUrls) {
+        try {
+          const r = await runCrawl(url);
+          details.push(`${new URL(url).pathname || "/"}: ${r.summary.headline}`);
+        } catch (crawlError) {
+          details.push(
+            `${url}: Error - ${crawlError instanceof Error ? crawlError.message : "fallo"}`,
+          );
+        }
+      }
+      setSummary({
+        type: "changes",
+        headline: `Crawl completado (${selectedDiscoveredUrls.length} subrutas)`,
+        details,
+      });
+      setShowDiscoveryModal(false);
+      setDiscoveredCandidates([]);
+      setSelectedDiscoveredUrls([]);
+    } catch (requestError) {
+      setError(
+        requestError instanceof ApiError || requestError instanceof Error
+          ? requestError.message
+          : "No se pudieron guardar/crawlear las subrutas.",
       );
     } finally {
       setIsCrawling(false);
@@ -246,6 +336,64 @@ export function CompetitorsSection({
       ) : selectedCompetitorId ? (
         <div className="mt-6 rounded-2xl border border-slate-800 bg-slate-950 p-5 text-sm text-slate-400">
           Todavia no se ha lanzado ningun crawling para este competitor.
+        </div>
+      ) : null}
+
+      {showDiscoveryModal ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-2xl rounded-2xl border border-slate-700 bg-slate-900 p-5 shadow-2xl">
+            <h3 className="text-lg font-semibold text-white">
+              Hemos encontrado subrutas
+            </h3>
+            <p className="mt-2 text-sm text-slate-400">
+              Selecciona cuáles quieres guardar y crawlear ahora.
+            </p>
+
+            <div className="mt-4 max-h-72 space-y-2 overflow-y-auto rounded-xl border border-slate-700 bg-slate-950 p-3">
+              {discoveredCandidates.map((url) => (
+                <label key={url} className="flex items-start gap-2 text-sm text-slate-200">
+                  <input
+                    type="checkbox"
+                    className="mt-1"
+                    checked={selectedDiscoveredUrls.includes(url)}
+                    onChange={(e) => {
+                      setSelectedDiscoveredUrls((prev) =>
+                        e.target.checked
+                          ? [...prev, url]
+                          : prev.filter((u) => u !== url),
+                      );
+                    }}
+                  />
+                  <span className="break-all">{url}</span>
+                </label>
+              ))}
+            </div>
+
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                className="rounded-xl border border-slate-600 px-4 py-2 text-sm text-slate-200 hover:bg-slate-800"
+                onClick={() => {
+                  setShowDiscoveryModal(false);
+                  setDiscoveredCandidates([]);
+                  setSelectedDiscoveredUrls([]);
+                }}
+                disabled={isCrawling}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="rounded-xl bg-cyan-400 px-4 py-2 text-sm font-semibold text-slate-950 disabled:opacity-60"
+                onClick={() => void handleCrawlSelectedDiscovered()}
+                disabled={isCrawling || selectedDiscoveredUrls.length === 0}
+              >
+                {isCrawling
+                  ? "Crawleando..."
+                  : `Crawlear seleccionadas (${selectedDiscoveredUrls.length})`}
+              </button>
+            </div>
+          </div>
         </div>
       ) : null}
     </section>

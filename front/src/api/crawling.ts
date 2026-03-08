@@ -19,6 +19,7 @@ export type CrawlPreviewData = {
   crawledAt: string;
   htmlHash: string;
   visibleTextHash: string;
+  discoveredUrls?: string[];
 };
 
 export type CrawlHistoryItem = {

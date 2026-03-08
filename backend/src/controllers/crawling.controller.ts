@@ -150,44 +150,65 @@ export const previewCrawl = async (
       return;
     }
 
-    const result: CrawlPreviewResult = await loadPagePreview(url);
-    const savedSnapshot = await saveCrawlSnapshot(result, competitorId);
-    const { changeReport, hadPreviousSnapshot } = await detectAndSaveChanges(
-      savedSnapshot.id,
-      competitorId,
-      result.requestedUrl,
-    );
+    const processSnapshot = async (
+      crawlResult: CrawlPreviewResult,
+    ): Promise<{
+      savedSnapshot: Awaited<ReturnType<typeof saveCrawlSnapshot>>;
+      changeReport: ChangeReportResult | null;
+      hadPreviousSnapshot: boolean;
+    }> => {
+      const savedSnapshot = await saveCrawlSnapshot(crawlResult, competitorId);
+      const { changeReport, hadPreviousSnapshot } = await detectAndSaveChanges(
+        savedSnapshot.id,
+        competitorId,
+        crawlResult.requestedUrl,
+      );
 
-    if (!hadPreviousSnapshot || isSignificantChange(changeReport)) {
-      setImmediate(() => {
-        void generateAndStoreBaselineAiReport({
-          competitorId,
-          competitor: { name: competitor.name, domain: competitor.domain },
-          snapshot: {
-            _id: savedSnapshot.id,
-            requestedUrl: result.requestedUrl,
-            finalUrl: result.finalUrl,
-            title: result.title,
-            h1: result.h1,
-            html: result.html,
-            visibleText: result.visibleText,
-            htmlLength: result.html.length,
-            visibleTextLength: result.visibleText.length,
-            crawledAt: new Date(savedSnapshot.crawledAt),
-          },
+      if (!hadPreviousSnapshot || isSignificantChange(changeReport)) {
+        setImmediate(() => {
+          void generateAndStoreBaselineAiReport({
+            competitorId,
+            competitor: { name: competitor.name, domain: competitor.domain },
+            snapshot: {
+              _id: savedSnapshot.id,
+              requestedUrl: crawlResult.requestedUrl,
+              finalUrl: crawlResult.finalUrl,
+              title: crawlResult.title,
+              h1: crawlResult.h1,
+              html: crawlResult.html,
+              visibleText: crawlResult.visibleText,
+              htmlLength: crawlResult.html.length,
+              visibleTextLength: crawlResult.visibleText.length,
+              crawledAt: new Date(savedSnapshot.crawledAt),
+            },
+          });
         });
-      });
-    }
+      }
+
+      return {
+        savedSnapshot,
+        changeReport,
+        hadPreviousSnapshot,
+      };
+    };
+
+    const result: CrawlPreviewResult = await loadPagePreview(url);
+    const firstProcess = await processSnapshot(result);
 
     const summary = buildCrawlSummary({
       competitorName: competitor.name,
       requestedUrl: result.requestedUrl,
       title: result.title,
       h1: result.h1,
-      snapshotId: savedSnapshot.id,
-      changeReport,
-      hadPreviousSnapshot,
+      snapshotId: firstProcess.savedSnapshot.id,
+      changeReport: firstProcess.changeReport,
+      hadPreviousSnapshot: firstProcess.hadPreviousSnapshot,
     });
+    if (!firstProcess.hadPreviousSnapshot && result.discoveredUrls.length > 0) {
+      summary.details.push(
+        `Se detectaron ${result.discoveredUrls.length} subrutas disponibles para crawling.`,
+      );
+    }
 
     response.json({
       data: {
@@ -204,14 +225,15 @@ export const previewCrawl = async (
         htmlLength: result.html.length,
         visibleTextPreview: result.visibleText.slice(0, 2_000),
         visibleTextLength: result.visibleText.length,
-        snapshotId: savedSnapshot.id,
-        competitorId: savedSnapshot.competitorId,
-        crawledAt: savedSnapshot.crawledAt,
-        htmlHash: savedSnapshot.htmlHash,
-        visibleTextHash: savedSnapshot.visibleTextHash,
+        snapshotId: firstProcess.savedSnapshot.id,
+        competitorId: firstProcess.savedSnapshot.competitorId,
+        crawledAt: firstProcess.savedSnapshot.crawledAt,
+        htmlHash: firstProcess.savedSnapshot.htmlHash,
+        visibleTextHash: firstProcess.savedSnapshot.visibleTextHash,
+        discoveredUrls: result.discoveredUrls,
       },
       summary,
-      changeReport: changeReport ?? undefined,
+      changeReport: firstProcess.changeReport ?? undefined,
     });
   } catch (error) {
     sendError(response, error, "Failed to crawl the URL.", "previewCrawl");
