@@ -50,6 +50,37 @@ export type ChangeReportData = {
   titleDiff: { from: string; to: string } | null;
   h1Diff: { from: string | null; to: string | null } | null;
   visibleTextDiff?: { added: string[]; removed: string[] } | null;
+  aiStatus?: "pending" | "completed" | "failed";
+  aiModel?: string | null;
+  aiPromptVersion?: string | null;
+  aiAnalysis?: {
+    version: "1.0";
+    language: "es";
+    summary: string;
+    impactScore: number;
+    severity: "low" | "medium" | "high" | "critical";
+    confidence: number;
+    keyChanges: Array<{
+      category: string;
+      description: string;
+      evidence: string;
+      impact: string;
+    }>;
+    businessImpact: {
+      seo: string;
+      messaging: string;
+      ux: string;
+      conversion: string;
+    };
+    recommendations: Array<{
+      priority: "high" | "medium" | "low";
+      action: string;
+      reason: string;
+    }>;
+    riskFlags: string[];
+    watchItems: string[];
+  } | null;
+  aiError?: string | null;
   detectedAt: string;
 };
 

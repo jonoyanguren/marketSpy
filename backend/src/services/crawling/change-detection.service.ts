@@ -1,6 +1,12 @@
 import { connectToDatabase } from "../../config/database.js";
 import { ChangeReportModel } from "../../models/change-report.model.js";
+import { CompetitorModel } from "../../models/competitor.model.js";
 import { CrawlSnapshotModel } from "../../models/crawl-snapshot.model.js";
+import {
+  analyzeChangeWithAi,
+  type AiChangeAnalysis,
+  type AiStatus,
+} from "../ai/change-analysis.service.js";
 import { computeVisibleTextDiff } from "../../utils/text-diff.js";
 
 export type ChangeReportResult = {
@@ -14,6 +20,11 @@ export type ChangeReportResult = {
   titleDiff: { from: string; to: string } | null;
   h1Diff: { from: string | null; to: string | null } | null;
   visibleTextDiff: { added: string[]; removed: string[] } | null;
+  aiStatus: AiStatus;
+  aiModel: string | null;
+  aiPromptVersion: string | null;
+  aiAnalysis: AiChangeAnalysis | null;
+  aiError: string | null;
   detectedAt: string;
 };
 
@@ -87,7 +98,47 @@ export async function detectAndSaveChanges(
       (visibleTextDiff.added.length > 0 || visibleTextDiff.removed.length > 0)
         ? visibleTextDiff
         : undefined,
+    aiStatus: "pending",
+    aiPromptVersion: "change-v1",
     detectedAt: new Date(),
+  });
+
+  const competitor = await CompetitorModel.findById(competitorId)
+    .select("name domain")
+    .lean();
+
+  setImmediate(() => {
+    void enrichChangeReportWithAi({
+      reportId: String(report._id),
+      competitorName: competitor?.name ?? "Competitor",
+      competitorDomain: competitor?.domain ?? "",
+      requestedUrl,
+      oldSnapshot: {
+        title: previousSnapshot.title ?? "",
+        h1: previousSnapshot.h1 ?? null,
+        visibleText: previousSnapshot.visibleText ?? "",
+        htmlLength: previousSnapshot.htmlLength ?? 0,
+        visibleTextLength: previousSnapshot.visibleTextLength ?? 0,
+      },
+      newSnapshot: {
+        title: newSnapshot.title ?? "",
+        h1: newSnapshot.h1 ?? null,
+        visibleText: newSnapshot.visibleText ?? "",
+        htmlLength: newSnapshot.htmlLength ?? 0,
+        visibleTextLength: newSnapshot.visibleTextLength ?? 0,
+      },
+      changeSignals: {
+        htmlChanged,
+        visibleTextChanged,
+        titleDiff: titleChanged ? { from: prevTitle, to: newTitle } : null,
+        h1Diff: h1Changed ? { from: prevH1 || null, to: newH1 || null } : null,
+        visibleTextDiff:
+          visibleTextDiff &&
+          (visibleTextDiff.added.length > 0 || visibleTextDiff.removed.length > 0)
+            ? visibleTextDiff
+            : null,
+      },
+    });
   });
 
   const result: ChangeReportResult = {
@@ -119,6 +170,11 @@ export async function detectAndSaveChanges(
             removed: report.visibleTextDiff.removed ?? [],
           }
         : null,
+    aiStatus: (report.aiStatus as AiStatus) ?? "pending",
+    aiModel: report.aiModel ?? null,
+    aiPromptVersion: report.aiPromptVersion ?? null,
+    aiAnalysis: (report.aiAnalysis as AiChangeAnalysis | null) ?? null,
+    aiError: report.aiError ?? null,
     detectedAt: report.detectedAt.toISOString(),
   };
 
@@ -136,6 +192,11 @@ export type ChangeReportListItem = {
   titleDiff: { from: string; to: string } | null;
   h1Diff: { from: string | null; to: string | null } | null;
   visibleTextDiff: { added: string[]; removed: string[] } | null;
+  aiStatus: AiStatus;
+  aiModel: string | null;
+  aiPromptVersion: string | null;
+  aiAnalysis: AiChangeAnalysis | null;
+  aiError: string | null;
   detectedAt: string;
 };
 
@@ -181,6 +242,78 @@ export async function listChangeReports(): Promise<ChangeReportListItem[]> {
             removed: r.visibleTextDiff.removed ?? [],
           }
         : null,
+    aiStatus: (r.aiStatus as AiStatus) ?? "pending",
+    aiModel: r.aiModel ?? null,
+    aiPromptVersion: r.aiPromptVersion ?? null,
+    aiAnalysis: (r.aiAnalysis as AiChangeAnalysis | null) ?? null,
+    aiError: r.aiError ?? null,
     detectedAt: r.detectedAt.toISOString(),
   }));
+}
+
+async function enrichChangeReportWithAi(input: {
+  reportId: string;
+  competitorName: string;
+  competitorDomain: string;
+  requestedUrl: string;
+  oldSnapshot: {
+    title: string;
+    h1: string | null;
+    visibleText: string;
+    htmlLength: number;
+    visibleTextLength: number;
+  };
+  newSnapshot: {
+    title: string;
+    h1: string | null;
+    visibleText: string;
+    htmlLength: number;
+    visibleTextLength: number;
+  };
+  changeSignals: {
+    htmlChanged: boolean;
+    visibleTextChanged: boolean;
+    titleDiff: { from: string; to: string } | null;
+    h1Diff: { from: string | null; to: string | null } | null;
+    visibleTextDiff: { added: string[]; removed: string[] } | null;
+  };
+}): Promise<void> {
+  try {
+    const { analysis, model } = await analyzeChangeWithAi({
+      competitorName: input.competitorName,
+      competitorDomain: input.competitorDomain,
+      requestedUrl: input.requestedUrl,
+      oldSnapshot: input.oldSnapshot,
+      newSnapshot: input.newSnapshot,
+      changeSignals: input.changeSignals,
+    });
+
+    if (!analysis) {
+      await ChangeReportModel.findByIdAndUpdate(input.reportId, {
+        $set: {
+          aiStatus: "failed",
+          aiError: "AI response invalid or unavailable.",
+          aiModel: model,
+        },
+      });
+      return;
+    }
+
+    await ChangeReportModel.findByIdAndUpdate(input.reportId, {
+      $set: {
+        aiStatus: "completed",
+        aiAnalysis: analysis,
+        aiError: null,
+        aiModel: model,
+      },
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "AI analysis failed.";
+    await ChangeReportModel.findByIdAndUpdate(input.reportId, {
+      $set: {
+        aiStatus: "failed",
+        aiError: message,
+      },
+    });
+  }
 }

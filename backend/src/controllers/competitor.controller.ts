@@ -6,6 +6,7 @@ import { sendError } from "../utils/error-handler.js";
 import { ChangeReportModel } from "../models/change-report.model.js";
 import { CompetitorModel } from "../models/competitor.model.js";
 import { CrawlSnapshotModel } from "../models/crawl-snapshot.model.js";
+import { AiReportModel } from "../models/ai-report.model.js";
 
 type CreateCompetitorBody = {
   name?: string;
@@ -339,6 +340,16 @@ export const getCompetitorBaseline = async (
       { name: competitor.name, domain: competitor.domain },
       firstSnapshot as Parameters<typeof buildCompetitorReport>[1],
     );
+
+    const cached = await AiReportModel.findOne({
+      snapshotId: firstSnapshot._id,
+      reportType: "baseline",
+    }).lean();
+
+    if (cached?.status === "completed" && cached.payload) {
+      response.json({ data: cached.payload });
+      return;
+    }
 
     response.json({ data: report });
   } catch (error) {

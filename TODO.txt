@@ -1,6 +1,7 @@
 # marketSpy – Próximos pasos
 
 - [x] Agregar múltiples crawls (URLs por competitor)
+- [ ] Hacer que el propio primer crawl te rellene todas las páginas a crawlear. Es decir, si una web raíz detecta 5 subrutas, directamente guardarlas y analizar todas.
 - [ ] Crawls a RRSS
 - [ ] Poner el propio cliente como crawl para que compare
 - [ ] Crawl programado: job/cron que crawlee periódicamente los competitors activos (ej. cada hora o diario)

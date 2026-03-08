@@ -1,3 +1,7 @@
+import { callOpenAiForJson } from "../ai/openai-json.service.js";
+import { buildBaselineReportPrompts } from "../ai/prompts.js";
+import { AiReportModel } from "../../models/ai-report.model.js";
+
 /** Extrae meta description y headings del HTML */
 function parseHtml(html: string): {
   metaDescription: string | null;
@@ -188,4 +192,222 @@ export function buildCompetitorReport(
       keyPhrases,
     },
   };
+}
+
+const BASELINE_REPORT_SCHEMA: Record<string, unknown> = {
+  type: "object",
+  additionalProperties: false,
+  required: [
+    "competitor",
+    "crawledAt",
+    "url",
+    "snapshotId",
+    "executive",
+    "positioning",
+    "seo",
+    "structure",
+    "content",
+  ],
+  properties: {
+    competitor: {
+      type: "object",
+      additionalProperties: false,
+      required: ["name", "domain"],
+      properties: {
+        name: { type: "string" },
+        domain: { type: "string" },
+      },
+    },
+    crawledAt: { type: "string" },
+    url: { type: "string" },
+    snapshotId: { type: "string" },
+    executive: {
+      type: "object",
+      additionalProperties: false,
+      required: ["headline", "summary"],
+      properties: {
+        headline: { type: "string" },
+        summary: { type: "string" },
+      },
+    },
+    positioning: {
+      type: "object",
+      additionalProperties: false,
+      required: ["valueProposition", "title", "h1"],
+      properties: {
+        valueProposition: { type: "string" },
+        title: { type: "string" },
+        h1: { type: ["string", "null"] },
+      },
+    },
+    seo: {
+      type: "object",
+      additionalProperties: false,
+      required: [
+        "title",
+        "titleLength",
+        "titleAssessment",
+        "metaDescription",
+        "metaDescriptionLength",
+        "metaAssessment",
+        "h1",
+        "wordCount",
+        "contentLength",
+      ],
+      properties: {
+        title: { type: "string" },
+        titleLength: { type: "number" },
+        titleAssessment: { type: "string", enum: ["corto", "ok", "largo"] },
+        metaDescription: { type: ["string", "null"] },
+        metaDescriptionLength: { type: "number" },
+        metaAssessment: {
+          type: "string",
+          enum: ["ausente", "corto", "ok", "largo"],
+        },
+        h1: { type: ["string", "null"] },
+        wordCount: { type: "number" },
+        contentLength: { type: "number" },
+      },
+    },
+    structure: {
+      type: "object",
+      additionalProperties: false,
+      required: ["htmlSize", "headings"],
+      properties: {
+        htmlSize: { type: "number" },
+        headings: {
+          type: "object",
+          additionalProperties: false,
+          required: ["h2", "h3"],
+          properties: {
+            h2: { type: "array", items: { type: "string" } },
+            h3: { type: "array", items: { type: "string" } },
+          },
+        },
+      },
+    },
+    content: {
+      type: "object",
+      additionalProperties: false,
+      required: ["preview", "keyPhrases"],
+      properties: {
+        preview: { type: "string" },
+        keyPhrases: { type: "array", items: { type: "string" } },
+      },
+    },
+  },
+};
+
+function validateCompetitorReport(value: unknown): CompetitorReport | null {
+  if (!value || typeof value !== "object") return null;
+  const v = value as Record<string, unknown>;
+  if (
+    !v.competitor ||
+    typeof v.competitor !== "object" ||
+    !v.executive ||
+    typeof v.executive !== "object" ||
+    !v.positioning ||
+    typeof v.positioning !== "object" ||
+    !v.seo ||
+    typeof v.seo !== "object" ||
+    !v.structure ||
+    typeof v.structure !== "object" ||
+    !v.content ||
+    typeof v.content !== "object"
+  ) {
+    return null;
+  }
+  return v as unknown as CompetitorReport;
+}
+
+export async function buildCompetitorReportWithAi(
+  competitor: { name: string; domain: string },
+  snapshot: SnapshotDoc,
+): Promise<{ report: CompetitorReport | null; model: string | null }> {
+  const fallback = buildCompetitorReport(competitor, snapshot);
+  const { systemPrompt, userPrompt } = buildBaselineReportPrompts({
+    competitor,
+    snapshot: {
+      crawledAt: snapshot.crawledAt.toISOString(),
+      requestedUrl: snapshot.requestedUrl,
+      finalUrl: snapshot.finalUrl,
+      title: snapshot.title,
+      h1: snapshot.h1,
+      htmlLength: snapshot.htmlLength,
+      visibleTextLength: snapshot.visibleTextLength,
+      visibleTextExcerpt: snapshot.visibleText.slice(0, 1600),
+      htmlExcerpt: snapshot.html.slice(0, 3000),
+    },
+    fallback,
+  });
+
+  const raw = await callOpenAiForJson({
+    systemPrompt,
+    userPrompt,
+    schemaName: "competitor_baseline_report_v1",
+    schema: BASELINE_REPORT_SCHEMA,
+  });
+
+  const report = validateCompetitorReport(raw?.content ?? null);
+  return {
+    report,
+    model: raw?.model ?? null,
+  };
+}
+
+export async function generateAndStoreBaselineAiReport(params: {
+  competitorId: string;
+  competitor: { name: string; domain: string };
+  snapshot: SnapshotDoc;
+}): Promise<void> {
+  const { competitorId, competitor, snapshot } = params;
+  const filter = {
+    snapshotId: snapshot._id,
+    reportType: "baseline",
+  } as Record<string, unknown>;
+
+  await AiReportModel.findOneAndUpdate(
+    filter,
+    {
+      $setOnInsert: {
+        competitorId,
+        snapshotId: snapshot._id,
+        reportType: "baseline",
+      },
+      $set: {
+        status: "pending",
+        promptVersion: "baseline-v1",
+      },
+    },
+    { upsert: true },
+  );
+
+  const ai = await buildCompetitorReportWithAi(competitor, snapshot);
+  if (ai.report) {
+    await AiReportModel.findOneAndUpdate(
+      filter,
+      {
+        $set: {
+          status: "completed",
+          payload: ai.report,
+          model: ai.model,
+          error: null,
+        },
+      },
+      { upsert: true },
+    );
+    return;
+  }
+
+  await AiReportModel.findOneAndUpdate(
+    filter,
+    {
+      $set: {
+        status: "failed",
+        error: "AI response invalid or unavailable.",
+        model: ai.model,
+      },
+    },
+    { upsert: true },
+  );
 }

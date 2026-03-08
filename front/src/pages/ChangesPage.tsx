@@ -6,6 +6,13 @@ import {
   type ChangeReportItem,
 } from "../api/crawling";
 
+const severityLabel: Record<"low" | "medium" | "high" | "critical", string> = {
+  low: "Baja",
+  medium: "Media",
+  high: "Alta",
+  critical: "Crítica",
+};
+
 export function ChangesPage() {
   const [items, setItems] = useState<ChangeReportItem[]>([]);
   const [error, setError] = useState("");
@@ -116,6 +123,38 @@ export function ChangesPage() {
                   <li className="text-slate-400">HTML modificado</li>
                 ) : null}
               </ul>
+
+              <div className="mt-4 rounded-xl border border-slate-700 bg-slate-900/70 p-3">
+                <p className="text-xs uppercase tracking-wide text-slate-400">
+                  Análisis IA
+                </p>
+                {item.aiStatus === "completed" && item.aiAnalysis ? (
+                  <div className="mt-2 space-y-2 text-slate-200">
+                    <p>{item.aiAnalysis.summary}</p>
+                    <p className="text-xs text-slate-400">
+                      Impacto: {item.aiAnalysis.impactScore}/100 · Severidad:{" "}
+                      {severityLabel[item.aiAnalysis.severity]} · Confianza:{" "}
+                      {Math.round(item.aiAnalysis.confidence * 100)}%
+                    </p>
+                    {item.aiAnalysis.recommendations.length > 0 ? (
+                      <ul className="list-disc space-y-1 pl-5 text-slate-300">
+                        {item.aiAnalysis.recommendations.slice(0, 3).map((rec, idx) => (
+                          <li key={idx}>
+                            [{rec.priority}] {rec.action}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
+                  </div>
+                ) : item.aiStatus === "failed" ? (
+                  <p className="mt-2 text-rose-300">
+                    No se pudo generar análisis IA.
+                    {item.aiError ? ` ${item.aiError}` : ""}
+                  </p>
+                ) : (
+                  <p className="mt-2 text-cyan-300">Analizando cambios...</p>
+                )}
+              </div>
               <div className="mt-3 text-xs text-slate-600">
                 <p>
                   Snapshot A: {item.snapshotAId} | Snapshot B: {item.snapshotBId}

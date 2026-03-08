@@ -39,6 +39,29 @@ const changeReportSchema = new Schema(
       added: [String],
       removed: [String],
     },
+    aiStatus: {
+      type: String,
+      enum: ["pending", "completed", "failed"],
+      required: true,
+      default: "pending",
+      index: true,
+    },
+    aiModel: {
+      type: String,
+      default: null,
+    },
+    aiPromptVersion: {
+      type: String,
+      default: null,
+    },
+    aiAnalysis: {
+      type: Schema.Types.Mixed,
+      default: null,
+    },
+    aiError: {
+      type: String,
+      default: null,
+    },
     detectedAt: {
       type: Date,
       required: true,

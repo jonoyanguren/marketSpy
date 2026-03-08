@@ -18,6 +18,7 @@ import {
   saveCrawlSnapshot,
 } from "../services/crawling/snapshot.service.js";
 import { sendError } from "../utils/error-handler.js";
+import { generateAndStoreBaselineAiReport } from "../services/competitor/report.service.js";
 
 type CrawlPreviewRequestBody = {
   url?: string;
@@ -56,41 +57,14 @@ function buildCrawlSummary(params: {
   }
 
   if (changeReport) {
-    const details: string[] = [];
-    if (
-      changeReport.titleDiff &&
-      changeReport.titleDiff.from !== changeReport.titleDiff.to
-    ) {
-      details.push(
-        `Título: "${changeReport.titleDiff.from}" → "${changeReport.titleDiff.to}"`,
-      );
-    }
-    if (
-      changeReport.h1Diff &&
-      (changeReport.h1Diff.from ?? "") !== (changeReport.h1Diff.to ?? "")
-    ) {
-      details.push(
-        `H1: "${changeReport.h1Diff.from ?? "—"}" → "${changeReport.h1Diff.to ?? "—"}"`,
-      );
-    }
-    if (changeReport.htmlChanged) details.push("HTML modificado");
-    if (changeReport.visibleTextDiff) {
-      for (const r of changeReport.visibleTextDiff.removed) {
-        details.push(`Contenido eliminado: "${r}"`);
-      }
-      for (const a of changeReport.visibleTextDiff.added) {
-        details.push(`Contenido añadido: "${a}"`);
-      }
-      if (
-        changeReport.visibleTextDiff.removed.length === 0 &&
-        changeReport.visibleTextDiff.added.length === 0
-      ) {
-        details.push("Texto visible modificado");
-      }
-    } else if (changeReport.visibleTextChanged) {
-      details.push("Texto visible modificado");
-    }
-
+    const details: string[] = [
+      "Se guardó un reporte de cambios.",
+      changeReport.aiStatus === "completed"
+        ? "Analisis IA completado."
+        : changeReport.aiStatus === "failed"
+          ? "Analisis IA no disponible (fallback de cambios guardado)."
+          : "Analizando cambios con IA en segundo plano.",
+    ];
     return {
       type: "changes",
       headline: "Cambios detectados",
@@ -113,6 +87,21 @@ const isValidHttpUrl = (value: string): boolean => {
     return false;
   }
 };
+
+function isSignificantChange(changeReport: ChangeReportResult | null): boolean {
+  if (!changeReport) return false;
+  const changedTitle =
+    !!changeReport.titleDiff &&
+    changeReport.titleDiff.from !== changeReport.titleDiff.to;
+  const changedH1 =
+    !!changeReport.h1Diff &&
+    (changeReport.h1Diff.from ?? "") !== (changeReport.h1Diff.to ?? "");
+  const textDelta =
+    (changeReport.visibleTextDiff?.added?.length ?? 0) +
+    (changeReport.visibleTextDiff?.removed?.length ?? 0);
+
+  return changedTitle || changedH1 || textDelta >= 2;
+}
 
 export const previewCrawl = async (
   request: Request<unknown, unknown, CrawlPreviewRequestBody>,
@@ -168,6 +157,27 @@ export const previewCrawl = async (
       competitorId,
       result.requestedUrl,
     );
+
+    if (!hadPreviousSnapshot || isSignificantChange(changeReport)) {
+      setImmediate(() => {
+        void generateAndStoreBaselineAiReport({
+          competitorId,
+          competitor: { name: competitor.name, domain: competitor.domain },
+          snapshot: {
+            _id: savedSnapshot.id,
+            requestedUrl: result.requestedUrl,
+            finalUrl: result.finalUrl,
+            title: result.title,
+            h1: result.h1,
+            html: result.html,
+            visibleText: result.visibleText,
+            htmlLength: result.html.length,
+            visibleTextLength: result.visibleText.length,
+            crawledAt: new Date(savedSnapshot.crawledAt),
+          },
+        });
+      });
+    }
 
     const summary = buildCrawlSummary({
       competitorName: competitor.name,
